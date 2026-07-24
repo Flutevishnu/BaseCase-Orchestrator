@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net/http"
 
 	"github.com/basecase/orchestrator/internal/clients"
 )
@@ -20,16 +21,20 @@ func NewEvaluationSaga() *EvaluationSaga {
 	}
 }
 
-func (s *EvaluationSaga) ExecuteSubmitEvaluation(ctx context.Context, userId string) (map[string]interface{}, error) {
+func (s *EvaluationSaga) Express() *clients.ExpressClient {
+	return s.express
+}
 
-	submissionRes, err := s.express.CreateSubmission(ctx, userId)
+func (s *EvaluationSaga) ExecuteSubmitEvaluation(ctx context.Context, userId string, sessionId string, code string) (*http.Response, error) {
+
+	submissionRes, err := s.express.CreateSubmission(ctx, userId, sessionId, code)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create submission in Express: %w", err)
 	}
 
 	submissionId, _ := submissionRes["id"].(string)
 
-	_, err = s.langgraph.StreamEvaluationRun(ctx, userId, submissionId)
+	resp, err := s.langgraph.StreamEvaluationRun(ctx, sessionId, submissionId, code)
 	if err != nil {
 		log.Printf("LangGraph evaluation start failed, compensating submission %s", submissionId)
 		compErr := s.express.MarkSubmissionFailed(ctx, submissionId)
@@ -39,5 +44,9 @@ func (s *EvaluationSaga) ExecuteSubmitEvaluation(ctx context.Context, userId str
 		return nil, fmt.Errorf("failed to start LangGraph evaluation: %w", err)
 	}
 
-	return submissionRes, nil
+	return resp, nil
+}
+
+func (s *EvaluationSaga) ExecuteStreamChat(ctx context.Context, threadId string, input map[string]interface{}) (*http.Response, error) {
+	return s.langgraph.StreamChat(ctx, threadId, input)
 }

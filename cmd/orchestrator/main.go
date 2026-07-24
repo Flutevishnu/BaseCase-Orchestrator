@@ -5,11 +5,16 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/joho/godotenv"
 	"github.com/basecase/orchestrator/internal/handlers"
 	"github.com/basecase/orchestrator/internal/middleware"
 )
 
 func main() {
+	if err := godotenv.Load(); err != nil {
+		log.Printf("No .env file found, relying on system environment variables")
+	}
+
 	mux := http.NewServeMux()
 
 	// Initialize handlers
@@ -18,7 +23,9 @@ func main() {
 
 	// Register routes
 	mux.HandleFunc("POST /api/v1/sessions", sessionHandler.CreateSession)
+	mux.HandleFunc("GET /api/v1/sessions/{id}/state", sessionHandler.GetSessionState)
 	mux.HandleFunc("POST /api/v1/evaluations/submit", evaluationHandler.SubmitEvaluation)
+	mux.HandleFunc("POST /api/v1/evaluations/stream", evaluationHandler.StreamChat)
 
 	// Apply middleware
 	handler := middleware.RequireUserId(mux)

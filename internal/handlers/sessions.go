@@ -25,7 +25,16 @@ func (h *SessionHandler) CreateSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := h.saga.ExecuteCreateSession(r.Context(), userId)
+	var reqBody struct {
+		ProblemId string `json:"problemId"`
+		Restart   bool   `json:"restart"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&reqBody); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	result, err := h.saga.ExecuteCreateSession(r.Context(), userId, reqBody.ProblemId, reqBody.Restart)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -33,5 +42,22 @@ func (h *SessionHandler) CreateSession(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(result)
+}
+
+func (h *SessionHandler) GetSessionState(w http.ResponseWriter, r *http.Request) {
+	sessionId := r.PathValue("id")
+	if sessionId == "" {
+		http.Error(w, "Missing session ID", http.StatusBadRequest)
+		return
+	}
+
+	result, err := h.saga.ExecuteGetSessionState(r.Context(), sessionId)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(result)
 }
