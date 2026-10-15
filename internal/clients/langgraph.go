@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"time"
@@ -16,6 +17,10 @@ type LangGraphClient struct {
 	gatewayURL    string
 	webhookSecret string
 	httpClient    *http.Client
+	// streamClient is for runs/stream. http.Client.Timeout also covers reading the
+	// body, so the 15 s httpClient would cut every SSE stream mid-run. Streams are
+	// bounded by the request context instead (cancelled when the caller disconnects).
+	streamClient *http.Client
 }
 
 func NewLangGraphClient() *LangGraphClient {
@@ -29,6 +34,13 @@ func NewLangGraphClient() *LangGraphClient {
 		webhookSecret: os.Getenv("LANGGRAPH_WEBHOOK_SECRET"),
 		httpClient: &http.Client{
 			Timeout: 15 * time.Second,
+		},
+		streamClient: &http.Client{
+			Transport: &http.Transport{
+				Proxy:                 http.ProxyFromEnvironment,
+				DialContext:           (&net.Dialer{Timeout: 10 * time.Second}).DialContext,
+				ResponseHeaderTimeout: 30 * time.Second,
+			},
 		},
 	}
 }
@@ -92,7 +104,7 @@ func (c *LangGraphClient) StreamEvaluationRun(ctx context.Context, threadId stri
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.streamClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -175,7 +187,7 @@ func (c *LangGraphClient) StreamChat(ctx context.Context, threadId string, input
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.streamClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
